@@ -1,8 +1,12 @@
 # Meeps releases
 
-Desktop builds of [Meeps](https://github.com/Fat-Melons/Meeps). This repository
-holds **no source** — it builds the installers here from the private source
-repo, and publishes them along with the updater manifest.
+Desktop builds of Meeps. This repository holds **no source** — it clones the
+private source at build time, builds the installers here, and publishes them
+along with the updater manifest.
+
+Meeps itself lives on self-hosted Gitea at `git.meeps.chat/Fat-Melons/Meeps`,
+which is the source of truth. This is the only part of Meeps still on GitHub,
+and it is here for one reason: the updater needs a public host.
 
 It exists because Meeps' source repository is private, and GitHub does not serve
 release assets on a private repository to unauthenticated clients. Tauri's
@@ -42,9 +46,10 @@ gh workflow run release.yml --repo aidanmcc02/meeps-releases \
   --field version=2.0.112 --field ref=<production sha>
 ```
 
-This repository then checks out that commit of the private source, builds and
-signs the Windows bundle, generates `latest.json`, cuts the release **here**
-with its own `GITHUB_TOKEN`, and posts the one release announcement to Discord.
+This repository then clones that commit from **Gitea** — a plain `git fetch`,
+because `actions/checkout` only speaks to GitHub — builds and signs the Windows
+bundle, generates `latest.json`, cuts the release **here** with its own
+`GITHUB_TOKEN`, and posts the one release announcement to Discord.
 
 Building here rather than mirroring in means there is no cross-repository write
 token and no GitHub App installation in the path — the credential that used to
@@ -57,21 +62,21 @@ You can run it by hand from the Actions tab. The build refuses to start if the
 
 ## Required secrets
 
-| Secret                     | Why                                                       |
-| -------------------------- | --------------------------------------------------------- |
-| `MEEPS_SOURCE_TOKEN`       | Read the private source. Fine-grained PAT, **Contents: read on `Fat-Melons/Meeps` only** |
-| `TAURI_PRIVATE_KEY`        | Signs the update bundle                                   |
-| `TAURI_KEY_PASSWORD`       | Its password                                              |
-| `VITE_BACKEND_HTTP_URL`    | Baked into the build                                      |
-| `VITE_BACKEND_WS_URL`      | Baked into the build                                      |
-| `DISCORD_POST_EXE_WEBHOOK` | The release announcement                                  |
+| Secret                     | Why                                                                       |
+| -------------------------- | ------------------------------------------------------------------------- |
+| `GITEA_TOKEN`              | Clone the private source from Gitea. Scope: **`read:repository` only**    |
+| `TAURI_PRIVATE_KEY`        | Signs the update bundle                                                   |
+| `TAURI_KEY_PASSWORD`       | Its password                                                              |
+| `VITE_BACKEND_HTTP_URL`    | Baked into the build                                                      |
+| `VITE_BACKEND_WS_URL`      | Baked into the build                                                      |
+| `DISCORD_POST_EXE_WEBHOOK` | The release announcement                                                  |
 
 Two of those deserve care, because this repository is public:
 
-- **`MEEPS_SOURCE_TOKEN` is a fine-grained PAT and PATs expire.** When it does,
-  releases stop, and the failure looks like a red workflow rather than anything
-  a user reports. Put its expiry in a calendar. It is scoped this narrowly on
-  purpose: read, one repository, no write anywhere.
+- **`GITEA_TOKEN` reads the private source.** Give it `read:repository` and
+  nothing else — no write, no admin, no user scope. If Gitea tokens are set to
+  expire, note the date: when it lapses, releases stop, and it looks like a red
+  workflow rather than anything a user reports.
 - **`TAURI_PRIVATE_KEY` signs updates every installed client trusts.** Rotating
   it after a leak does not undo the exposure — clients check the pubkey compiled
   into the copy they are already running, so a rotation only protects people who

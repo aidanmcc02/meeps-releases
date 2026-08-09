@@ -42,24 +42,32 @@ permissions:
   contents: read
 
 env:
-  SOURCE_REPO: Fat-Melons/Meeps
+  # Gitea is the source of truth, not GitHub. The GitHub copy of Meeps is a
+  # dead mirror and drifts — building from it would ship whatever it was last
+  # left at. That is why the source step below is a plain `git clone` rather
+  # than actions/checkout: checkout only speaks to GitHub.
+  SOURCE_REPO: https://git.meeps.chat/Fat-Melons/Meeps.git
 
 jobs:
   windows-installer:
     name: Windows Installer
     runs-on: windows-latest
     steps:
-      # `persist-credentials: false` matters more than usual here: the default
-      # leaves the source token in the runner's git config, where every later
-      # step — including anything npm runs — can read it.
-      - name: Checkout Meeps source
-        uses: actions/checkout@v6.0.2
-        with:
-          repository: ${{ env.SOURCE_REPO }}
-          ref: ${{ inputs.ref }}
-          token: ${{ secrets.MEEPS_SOURCE_TOKEN }}
-          persist-credentials: false
-          path: source
+      # The credential goes on the one fetch that needs it, via `-c`, so it is
+      # never written to .git/config — every later step, including anything npm
+      # runs, would otherwise be able to read it straight back out.
+      - name: Clone Meeps source from Gitea
+        shell: bash
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          AUTH=$(printf "x:%s" "$GITEA_TOKEN" | base64 | tr -d '\n')
+          mkdir source && cd source
+          git init -q
+          git -c http.extraheader="AUTHORIZATION: basic $AUTH" \
+            fetch --depth 1 "$SOURCE_REPO" "${{ inputs.ref }}"
+          git checkout -q FETCH_HEAD
+          git log -1 --pretty="cloned %h %s"
 
       # The dispatcher names the version and the ref independently, so nothing
       # guarantees they agree — a stale `production`, or a re-run against a ref
@@ -129,14 +137,16 @@ jobs:
     steps:
       # generate-latest-json.js, changelog.js and CHANGELOG.md all live in the
       # source repo, and the script reads the version out of tauri.conf.json.
-      - name: Checkout Meeps source
-        uses: actions/checkout@v6.0.2
-        with:
-          repository: ${{ env.SOURCE_REPO }}
-          ref: ${{ inputs.ref }}
-          token: ${{ secrets.MEEPS_SOURCE_TOKEN }}
-          persist-credentials: false
-          path: source
+      - name: Clone Meeps source from Gitea
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          AUTH=$(printf "x:%s" "$GITEA_TOKEN" | base64 | tr -d '\n')
+          mkdir source && cd source
+          git init -q
+          git -c http.extraheader="AUTHORIZATION: basic $AUTH" \
+            fetch --depth 1 "$SOURCE_REPO" "${{ inputs.ref }}"
+          git checkout -q FETCH_HEAD
 
       - name: Setup Node.js
         uses: actions/setup-node@v6.3.0
