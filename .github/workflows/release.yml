@@ -222,6 +222,9 @@ jobs:
       - name: Create the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job checks out only the Gitea source into `source/`, so the
+          # workspace itself has no GitHub remote for `gh` to infer.
+          GH_REPO: ${{ github.repository }}
           CHANGELOG: ${{ steps.changelog.outputs.notes }}
         run: |
           TAG="v${{ inputs.version }}"
