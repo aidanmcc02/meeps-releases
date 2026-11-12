@@ -104,6 +104,20 @@ jobs:
         run: npm ci
         working-directory: source
 
+      # The desktop CSP is compiled into the binary. The source repo's base
+      # config keeps a broad `connect-src` for development; this overlay pins
+      # it to the deployment's backend and SFU (VSA-15, VSA-21) and carries
+      # tauri.production.conf.json. It fails the release if a URL is missing
+      # or malformed, rather than shipping the development CSP.
+      - name: Pin the desktop CSP to this deployment
+        shell: bash
+        working-directory: source
+        env:
+          VITE_BACKEND_HTTP_URL: ${{ secrets.VITE_BACKEND_HTTP_URL }}
+          VITE_BACKEND_WS_URL: ${{ secrets.VITE_BACKEND_WS_URL }}
+          VITE_LIVEKIT_URL: ${{ vars.VITE_LIVEKIT_URL }}
+        run: node scripts/desktop-tauri-config.js --out src-tauri/target/tauri.release.conf.json
+
       # No `tagName`, so the action builds and stops — it does not cut a
       # release. The publish job below does that, after the manifest exists.
       - name: Build Tauri app (Windows)
@@ -113,12 +127,15 @@ jobs:
           VITE_BACKEND_HTTP_URL: ${{ secrets.VITE_BACKEND_HTTP_URL }}
           VITE_BACKEND_WS_URL: ${{ secrets.VITE_BACKEND_WS_URL }}
           VITE_PUBLIC_WEB_URL: ${{ vars.VITE_PUBLIC_WEB_URL }}
+          # The SFU's bare wss:// origin. The app sends the microphone to this
+          # SFU only, and the source build refuses to run without it.
+          VITE_LIVEKIT_URL: ${{ vars.VITE_LIVEKIT_URL }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           projectPath: source
           tauriScript: npm run tauri
-          args: --config src-tauri/tauri.production.conf.json
+          args: --config src-tauri/target/tauri.release.conf.json
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7.0.0
